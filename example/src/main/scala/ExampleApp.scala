@@ -30,6 +30,7 @@ object ExampleApp extends CurlApp.Simple {
   }
 
   def run: IO[Unit] = for {
+    _ <- IO.println("Im going...")
     responses <- curlClient.expect[Joke]("https://icanhazdadjoke.com/").parReplicateA(3)
     _ <- responses.traverse_(r => IO.println(r.joke))
   } yield ()

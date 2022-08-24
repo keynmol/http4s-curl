@@ -48,10 +48,86 @@ lazy val curl = project
 
 lazy val example = project
   .in(file("example"))
-  .enablePlugins(ScalaNativePlugin, NoPublishPlugin)
+  .enablePlugins(ScalaNativePlugin, NoPublishPlugin, VcpkgPlugin)
   .dependsOn(curl)
   .settings(
     libraryDependencies ++= Seq(
       "com.armanbilge" %%% "http4s-circe" % http4sVersion
-    )
+    ),
+    vcpkgDependencies := Set("curl", "zlib"),
   )
+  .settings(vcpkgNativeConfig())
+
+def vcpkgNativeConfig(rename: String => String = identity) = Seq(
+  nativeConfig := {
+    /* import bindgen.interface.Platform.OS.* */
+    /* import bindgen.interface.Platform */
+    val configurator = vcpkgConfigurator.value
+    val manager = vcpkgManager.value
+    val conf = nativeConfig.value
+    val deps = vcpkgDependencies.value.toSeq.map(rename)
+
+    val files = deps.map(d => manager.files(d))
+
+    val compileArgsApprox = files.flatMap { f =>
+      List("-I" + f.includeDir.toString)
+    }
+    val linkingArgsApprox = files.flatMap { f =>
+      List("-L" + f.libDir) ++ f.staticLibraries.map(_.toString)
+    }
+
+    import scala.util.control.NonFatal
+
+    def updateLinkingFlags(current: Seq[String], deps: String*) =
+      try
+        configurator.updateLinkingFlags(
+          current,
+          deps*
+        )
+      catch {
+        case NonFatal(exc) =>
+          current ++ linkingArgsApprox
+      }
+
+    def updateCompilationFlags(current: Seq[String], deps: String*) =
+      try
+        configurator.updateCompilationFlags(
+          current,
+          deps*
+        )
+      catch {
+        case NonFatal(exc) =>
+          current ++ compileArgsApprox
+      }
+
+    val arch64 =
+      if (System.getProperty("os.arch") == "aarch64")
+        List(
+          "-arch",
+          "arm64",
+          "-framework",
+          "CoreFoundation",
+          "-framework",
+          "Security",
+          "-framework",
+          "SystemConfiguration",
+        )
+      else Nil
+
+    println(arch64)
+
+    conf
+      .withLinkingOptions(
+        updateLinkingFlags(
+          conf.linkingOptions ++ arch64,
+          deps*
+        )
+      )
+      .withCompileOptions(
+        updateCompilationFlags(
+          conf.compileOptions ++ arch64,
+          deps*
+        )
+      )
+  }
+)

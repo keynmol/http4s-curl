@@ -29,6 +29,7 @@ final private[curl] class CurlExecutorScheduler(multiHandle: Ptr[libcurl.CURLM])
   private val callbacks = mutable.Map[Ptr[libcurl.CURL], Either[Throwable, Unit] => Unit]()
 
   def poll(timeout: Duration): Boolean = {
+    println(timeout)
 
     val timeoutMillis = timeout match {
       case Duration.Inf => Int.MaxValue
@@ -49,9 +50,12 @@ final private[curl] class CurlExecutorScheduler(multiHandle: Ptr[libcurl.CURLM])
     }
 
     val runningHandles = stackalloc[CInt]()
+    println(s"running handles before perform: ${!runningHandles}")
+
     val performCode = libcurl.curl_multi_perform(multiHandle, runningHandles)
     if (performCode != 0)
       throw new RuntimeException(s"curl_multi_perform: $performCode")
+    println(s"running handles: ${!runningHandles}")
 
     while ({
       val msgsInQueue = stackalloc[CInt]()
